@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DriveSense – Ricerca Auto Intelligente</title>
+  <style>
+    :root {
+      --bg:#f5f5f7; --card:#fff; --text:#111; --sub:#555; --border:#ddd;
+      --accent:#2563eb; --accent-hover:#1d4ed8; --accent-soft:#e0edff;
+    }
+    .dark {
+      --bg:#0f0f11; --card:#1a1a1d; --text:#f5f5f5; --sub:#aaa; --border:#333;
+      --accent-soft:#1f2f55;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;font-family:system-ui;}
+    body{background:var(--bg);color:var(--text);padding:24px;transition:.3s;}
+    .app{max-width:900px;margin:auto;}
+    .logo{font-size:2.2rem;font-weight:800;background:linear-gradient(90deg,#2563eb,#1d4ed8);
+      -webkit-background-clip:text;color:transparent;}
+    .dark-switch{position:fixed;top:20px;right:20px;background:var(--card);border:1px solid var(--border);
+      padding:8px 14px;border-radius:999px;cursor:pointer;}
+    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:20px;border:1px solid var(--border);
+      box-shadow:0 8px 24px rgba(0,0,0,0.08);}
+    .search-main{display:flex;gap:10px;flex-wrap:wrap;}
+    .search-main input{flex:1;padding:12px 16px;border-radius:999px;border:1px solid var(--border);}
+    .search-main button{padding:12px 20px;border-radius:999px;border:none;background:var(--accent);color:#fff;font-weight:600;}
+    .chips-row{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;}
+    .chip{padding:6px 12px;border-radius:999px;border:1px solid var(--border);cursor:pointer;}
+    .chip.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);}
+    .results-list{margin-top:12px;display:flex;flex-direction:column;gap:10px;}
+    .result-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;}
+    .result-title{font-weight:600;}
+    .result-price{font-weight:700;color:var(--accent);margin-top:4px;}
+    .result-meta{color:var(--sub);font-size:.85rem;margin-top:2px;}
+    .result-ai{margin-top:6px;font-size:.9rem;}
+    .badge{padding:4px 10px;border-radius:999px;font-size:.75rem;font-weight:600;}
+    .badge.good{background:#dcfce7;color:#16a34a;}
+    .badge.medium{background:#fef9c3;color:#eab308;}
+    .badge.bad{background:#fee2e2;color:#dc2626;}
+    .link-btn{color:var(--accent);font-size:.85rem;font-weight:600;text-decoration:none;}
+  </style>
+</head>
+
+<body>
+<div class="dark-switch" id="darkSwitch">🌙</div>
+
+<div class="app">
+  <header>
+    <div class="logo">DriveSense</div>
+    <p style="color:var(--sub);margin-top:6px;">
+      Motore intelligente che analizza gli annunci e ti dà il verdetto migliore.
+    </p>
+  </header>
+
+  <section class="card">
+    <div class="search-main">
+      <input id="queryInput" type="text" placeholder="Es. Diesel sotto 5.000€ in Piemonte">
+      <button id="searchBtn">Cerca</button>
+    </div>
+
+    <div class="chips-row">
+      <button class="chip active" data-site="subito">Subito</button>
+      <button class="chip active" data-site="autoscout">Autoscout</button>
+      <button class="chip active" data-site="marketplace">Marketplace</button>
+    </div>
+
+    <div id="statusText" style="color:var(--sub);margin-top:10px;">
+      Scrivi cosa cerchi e premi “Cerca”.
+    </div>
+  </section>
+
+  <section class="card">
+    <div id="resultsInfo" style="color:var(--sub);font-size:.9rem;">Nessun risultato.</div>
+    <div id="resultsList" class="results-list"></div>
+  </section>
+</div>
+
+<script>
+document.getElementById("darkSwitch").onclick = () => document.body.classList.toggle("dark");
+
+let activeSites = new Set(["subito","autoscout","marketplace"]);
+
+document.querySelectorAll(".chip").forEach(chip=>{
+  chip.onclick=()=>{
+    const site = chip.dataset.site;
+    if(activeSites.has(site)){ activeSites.delete(site); chip.classList.remove("active"); }
+    else{ activeSites.add(site); chip.classList.add("active"); }
+  };
+});
+
+document.getElementById("searchBtn").onclick = async () => {
+  const query = document.getElementById("queryInput").value.trim();
+  if(!query){
+    document.getElementById("statusText").textContent = "Inserisci una richiesta chiara.";
+    return;
+  }
+
+  document.getElementById("statusText").textContent = "Analisi in corso...";
+  document.getElementById("resultsList").innerHTML = "";
+
+  const res = await fetch("/api/ai", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({
+      query,
+      sites: Array.from(activeSites)
+    })
+  });
+
+  const data = await res.json();
+  renderResults(data);
+};
+
+function renderResults(data){
+  const { results, summary } = data;
+  document.getElementById("resultsInfo").textContent = summary || "Risultati trovati.";
+  const box = document.getElementById("resultsList");
+  box.innerHTML = "";
+
+  results.forEach(r=>{
+    const card = document.createElement("div");
+    card.className = "result-card";
+    card.innerHTML = `
+      <div class="result-title">${r.title}</div>
+      <div class="result-price">${r.price}</div>
+      <div class="result-meta">${r.year} • ${r.km} • ${r.site}</div>
+      <div class="result-ai">${r.aiSummary}</div>
+      <div style="margin-top:8px;display:flex;justify-content:space-between;">
+        <span class="badge ${r.verdict}">${r.verdictLabel}</span>
+        <a class="link-btn" href="${r.link}" target="_blank">Apri annuncio</a>
+      </div>
+    `;
+    box.appendChild(card);
+  });
+}
+</script>
+</body>
+</html>
